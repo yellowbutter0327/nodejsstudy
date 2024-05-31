@@ -15,10 +15,9 @@ app.set("view engine", "ejs");
 //유저가 데이터를 보내면 요청.body로 쉽게 꺼내쓸 수 있게 도와주는 코드
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-//env쓰려고 만든 것
-require("dotenv").config();
 
 const { MongoClient } = require("mongodb");
+const { ObjectId } = require("mongodb");
 
 let db;
 new MongoClient(url)
@@ -77,9 +76,36 @@ app.get("/write", (요청, 응답) => {
 app.post("/add", async (요청, 응답) => {
   console.log(요청.body);
   //여기서 요청.body는 {title: '' , content: ''} 이런 형식일듯
-  await db
-    .collection("post")
-    .insertOne({ title: 요청.body.title, content: 요청.body.content });
-  // 응답.send()
-  응답.redirect("/list");
+  try {
+    if (요청.body.title === "") {
+      응답.send("잘못된 요청입니다.");
+    } else {
+      await db
+        .collection("post")
+        .insertOne({ title: 요청.body.title, content: 요청.body.content });
+      // 응답.send()
+      응답.redirect("/list");
+    }
+  } catch (e) {
+    console.log(e);
+    응답.status(500).send("서버에러");
+  }
+});
+
+//url parameter
+
+app.get("/detail/:id", async (요청, 응답) => {
+  try {
+    let result = await db
+      .collection("post")
+      .findOne({ _id: new ObjectId(요청.params.id) });
+    if (result == null) {
+      응답.status(400).send("이상한 url 입력함");
+    } else {
+      응답.render("detail.ejs", { result: result });
+    }
+  } catch (e) {
+    console.log(e);
+    응답.status(400).send("이상한 url 입력함");
+  }
 });

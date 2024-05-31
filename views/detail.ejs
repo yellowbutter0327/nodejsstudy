@@ -10,16 +10,10 @@
 
   <body class="grey-bg">
     <%- include('nav.ejs') %>
-    <!-- <%= JSON.stringify(글목록) %> -->
-    <div class="white-bg">
-      <% for(let i=0; i < 글목록.length ; i++) { %>
-      <div class="list-box">
-        <a href="/detail/<%= 글목록[i]._id%>">
-          <h4><%= 글목록[i].title %></h4>
-          <p><%= 글목록[i].content %></p>
-        </a>
-      </div>
-      <% } %>
+    <!-- <%= JSON.stringify(result) %> -->
+    <div class="detail-bg">
+      <h4><%= result.title %></h4>
+      <p><%= result.content %></p>
     </div>
   </body>
 </html>
