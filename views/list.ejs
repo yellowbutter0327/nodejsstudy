@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Document</title>
-    <link href="main.css" rel="stylesheet" />
+    <link href="/main.css" rel="stylesheet" />
   </head>
 
   <body class="grey-bg">
@@ -14,12 +14,33 @@
     <div class="white-bg">
       <% for(let i=0; i < 글목록.length ; i++) { %>
       <div class="list-box">
-        <a href="/detail/<%= 글목록[i]._id%>">
-          <h4><%= 글목록[i].title %></h4>
-          <p><%= 글목록[i].content %></p>
-        </a>
+        <h4>
+          <a href="detail/<%= 글목록[i]._id %>"> <%= 글목록[i].title %> </a>
+          <a href="/edit/<%= 글목록[i]._id %>">✏️</a>
+          <!-- 삭제버튼에 id라는 이름으로 글의 _id를 숨겨놓을 수 있다. -->
+          <span class="delete" data-id="<%= 글목록[i]._id %>">🗑️</span>
+        </h4>
+        <p><%= 글목록[i].content %></p>
       </div>
       <% } %>
     </div>
+    <script>
+      console.log("<%= 글목록[0]._id %>");
+      //방법1
+      // document
+      //   .querySelectorAll(".delete")[0]
+      //   .addEventListener("click", function () {
+      //     fetch("/delete?docid=<%= 글목록[0]._id %>", { method: "DELETE" });
+      //   });
+
+      //방법2(좀 더 정확한 방법)
+      document
+        .querySelectorAll(".delete")[0]
+        .addEventListener("click", function (e) {
+          fetch("/delete?docid=" + e.target.dataset.id, {
+            method: "DELETE",
+          });
+        });
+    </script>
   </body>
 </html>

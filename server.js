@@ -7,7 +7,9 @@
 
 const express = require("express");
 const app = express();
-
+const { MongoClient } = require("mongodb");
+const { ObjectId } = require("mongodb");
+const methodOverride = require("method-override");
 //css사용하고 싶으면 public안에다가 넣던가 폴더 만들고 적어주기
 app.use(express.static(__dirname + "/public"));
 //데이터 꽂아넣기, view 폴더 만들기
@@ -15,9 +17,7 @@ app.set("view engine", "ejs");
 //유저가 데이터를 보내면 요청.body로 쉽게 꺼내쓸 수 있게 도와주는 코드
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-const { MongoClient } = require("mongodb");
-const { ObjectId } = require("mongodb");
+app.use(methodOverride("_method"));
 
 let db;
 new MongoClient(url)
@@ -100,7 +100,7 @@ app.get("/detail/:id", async (요청, 응답) => {
       .collection("post")
       .findOne({ _id: new ObjectId(요청.params.id) });
     if (result == null) {
-      응답.status(400).send("이상한 url 입력함");
+      응답.status(400).send("이상한 url 입력함!");
     } else {
       응답.render("detail.ejs", { result: result });
     }
@@ -108,4 +108,50 @@ app.get("/detail/:id", async (요청, 응답) => {
     console.log(e);
     응답.status(400).send("이상한 url 입력함");
   }
+});
+
+//글 수정 기능
+app.get("/edit/:id", async (요청, 응답) => {
+  //글 수정하고 싶으면 updateOne({어떤 document}, {$set:{어떤 내용으로 수정할지}})
+  let result = await db
+    .collection("post")
+    .findOne({ _id: new ObjectId(요청.params.id) });
+  console.log(result);
+  응답.render("edit.ejs", { result: result });
+});
+
+app.put("/edit", async (요청, 응답) => {
+  //db.collection('post').updateOne({_id:1}, {$set: {like : 1}}) 이러면 id가 1인걸 찾아 like를 1로 바꿔준다.
+  //set은 덮어쓰기, inc은 1 증가, mul은 곱셈, unset은 필드값 삭제,
+  //동시에 여러개 수정은 updateOne말고 updateMany
+  //like 항목이 10이 넘는 모든 document 찾을때 : updateMany({like: {$gt:10}}) 이렇게하면 like가 10보다 큰걸 모두 바꿔줌
+  await db.collection("post").updateOne(
+    { _id: new ObjectId(요청.body.id) },
+    { $set: { title: 요청.body.title, content: 요청.body.content } }
+    //{$inc : {like: -2}} 이렇게 하면 기존 숫자 증감하고 싶을때
+  );
+  응답.redirect("/list");
+});
+
+// app.post("/abc", async (요청, 응답) => {
+//   console.log("안녕");
+//   console.log(요청.body);
+// });
+
+//파라미터인 경우
+// app.get('/abc/:id', async(요청,응답) => {
+// console.log(요청.params)
+// })
+
+//쿼리스트링일 경우
+// app.get("/abc", async (요청, 응답) => {
+//   console.log(요청.query);
+// });
+
+app.delete("/delete", async (요청, 응답) => {
+  console.log(요청.query);
+  let result = await db.collection("post").deleteOne({ _id: 요청.query.docid });
+  응답.send("삭제완료");
+  //ajax 요청시 응답.redirect 응답.render 사용안하는게 낫다.
+  //새로고침 안하려고 ajax 사용하는건데 새로고침하면 의미가 없기 때문임
 });

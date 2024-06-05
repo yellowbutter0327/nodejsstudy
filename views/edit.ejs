@@ -10,10 +10,12 @@
 
   <body class="grey-bg">
     <%- include('nav.ejs') %>
-    <form class="form-box" action="/add" method="POST">
-      <h4>글쓰기</h4>
-      <input name="title" />
-      <input name="content" />
+    <!-- put 을 쓰거나 하려면 ajax 등 써야한다. -->
+    <form class="form-box" action="/edit?_method=PUT" method="POST">
+      <h4>수정하기</h4>
+      <input name="id" value="<%= result._id %>" style="display: none" />
+      <input name="title" value="<%=result.title%>" />
+      <input name="content" value="<%=result.content%>" />
       <button type="submit">전송</button>
     </form>
   </body>
