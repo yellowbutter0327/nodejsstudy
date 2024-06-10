@@ -19,6 +19,23 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(methodOverride("_method"));
 
+//passport 라이브러리 세팅
+const session = require("express-session");
+const passport = require("passport");
+const LocalStrategy = require("passport-local");
+
+app.use(passport.initialize());
+app.use(
+  session({
+    secret: "1234",
+    resave: false,
+    saveUninitialized: false,
+    cookie: { maxAge: 60 * 60 * 1000 }, //세션 유효기간 변경가능, 이건 1시간
+  })
+);
+
+app.use(passport.session());
+
 let db;
 new MongoClient(url)
   .connect()
@@ -154,4 +171,109 @@ app.delete("/delete", async (요청, 응답) => {
   응답.send("삭제완료");
   //ajax 요청시 응답.redirect 응답.render 사용안하는게 낫다.
   //새로고침 안하려고 ajax 사용하는건데 새로고침하면 의미가 없기 때문임
+});
+
+//페이지네이션
+//1번 버튼 누르면 1~5번 글 보여줌
+//2번 버튼 누르면 6~10번 글 보여줌
+//3번 버튼 누르면 1~15번 글 보여줌
+
+// app.get("list/:id", async (요청, 응답) => {
+//   //skip은 0개 건너뛰고 limit개 보여달라.
+//   let result = await db
+//     .collection("post")
+//     .find()
+//     .skip((요청.params.id - 1) * 5)
+//     .limit(5)
+//     .toArray();
+//   응답.render("list.ejs", { 글목록: result });
+// });
+
+//skip에 큰 숫자가 들어가면 성능이 안 좋아진다.
+//find안에다가 조건식 가져오는 방법이 있다.
+//바로 다음 페이지만 가져오게 하는 방법
+app.get("list/:id", async (요청, 응답) => {
+  let result = await db
+    .collection("post")
+    // $gt : 방금본마지막게시물_id
+    .find({ _id: { $gt: 방금본마지막게시물_id } })
+    .limit(5)
+    .toArray();
+  응답.render("list.ejs", { 글목록: result });
+});
+
+app.get("list/next/:id", async (요청, 응답) => {
+  let result = await db
+    .collection("post")
+    // $gt : 방금본마지막게시물_id
+    .find({ _id: { $gt: new ObjectId(요청.params.id) } })
+    .limit(5)
+    .toArray();
+  응답.render("list.ejs", { 글목록: result });
+});
+
+//글 순서/번호가 중요하고, n번째 페이지를 자주 보여줘야한다면 _id를 정수로 저장한다.
+
+//유저가 제출한 아이디, 비번 맞는지 검사하는 코드
+//passport.authenticate('local') 쓰면 이 기능이 실행이 된다.
+//db 조회하는 것도 try, catch로 예외 처리 가능하다.
+//아이디/비번 외에 다른 것도 제출받아서 검증하려면 passReqToCallback 옵션으로 검증
+passport.use(
+  new LocalStrategy(async (입력한아이디, 입력한비번, cb) => {
+    let result = await db
+      .collection("user")
+      .findOne({ username: 입력한아이디 });
+    if (!result) {
+      return cb(null, false, { message: "아이디 DB에 없음" });
+    }
+    if (result.password == 입력한비번) {
+      return cb(null, result);
+    } else {
+      return cb(null, false, { message: "비번불일치" });
+    }
+  })
+);
+
+app.get("/login", async (요청, 응답) => {
+  응답.render("login.ejs");
+});
+
+app.post("/login", async (요청, 응답, next) => {
+  //유저가 보낸 아이디, 비번을 DB와 비교하는 코드가 실행된다.
+  //error, 성공, 실패시 이유 순
+  passport.authenticate("local", (error, user, info) => {
+    if (error) return 응답.status(500).json(error);
+    if (!user) return 응답.status(401).json(info.message);
+    //세션만들어줌
+    요청.logIn(user, (err) => {
+      if (err) return next(err);
+      //로그인이 완료됐을대 메인 페이지로!
+      응답.redirect("/");
+    });
+  })(요청, 응답, next);
+});
+
+//로그인 시 세션만들기 -> passport.serializeUser();
+//세션 id 담긴 쿠키 보내주기
+
+//요청.login할때마다 안에 있는 코드가 실행된다.
+//null 다음에 있는 세션 document를 만들어주고 쿠키도 알아서 만들어준다.
+//아직 db 생성안해서 메모리에 발행해줌.
+passport.serializeUser((user, done) => {
+  //nextTick: node.js에서 내부 코드를 비동기적으로 처리해줌 (queueMicrotask()와 유사)
+  // if (result.password == 입력한비번) {
+  //   return cb(null, result);
+  //아까 여기서 받은 result 때문에 console.log(user) 하면 정보가 찍힘
+  process.nextTick(() => {
+    done(null, { id: user._id, username: user.username });
+    //로그인 시 세션 docmuent 를 발행히주고 document의 _id를 쿠키에 적어 보내준다.
+  });
+});
+
+//유저가 보낸 쿠키 분석
+//쿠키가 이상 없으면 현재 로그인된 유저 정보를 알려준다.
+passport.deserializeUser((user, done) => {
+  process.nextTick(() => {
+    return done(null, user);
+  });
 });
