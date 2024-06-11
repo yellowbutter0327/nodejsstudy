@@ -10,6 +10,8 @@ const app = express();
 const { MongoClient } = require("mongodb");
 const { ObjectId } = require("mongodb");
 const methodOverride = require("method-override");
+const bcrypt = require("bcrypt");
+
 //css사용하고 싶으면 public안에다가 넣던가 폴더 만들고 적어주기
 app.use(express.static(__dirname + "/public"));
 //데이터 꽂아넣기, view 폴더 만들기
@@ -23,6 +25,7 @@ app.use(methodOverride("_method"));
 const session = require("express-session");
 const passport = require("passport");
 const LocalStrategy = require("passport-local");
+const MongoStore = require("connect-mongo");
 
 app.use(passport.initialize());
 app.use(
@@ -31,6 +34,13 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 60 * 60 * 1000 }, //세션 유효기간 변경가능, 이건 1시간
+    // DB에 접속해서 forum이라는 데이터베이스 안에 sessions라는 컬렉션을 만들어서
+    // 거기에 세션을 알아서 보관.
+    // 유효기간 지나면 자동으로 삭제도 알아서 해준다.
+    store: MongoStore.create({
+      mongoUrl: url,
+      dbName: "forum",
+    }),
   })
 );
 
@@ -226,7 +236,8 @@ passport.use(
     if (!result) {
       return cb(null, false, { message: "아이디 DB에 없음" });
     }
-    if (result.password == 입력한비번) {
+    // result.password == 입력한비번 이렇게 하면 hash된 값으로는 비교 어려우니까 bcrypt.compare을 사용한다.
+    if (await bcrypt.compare(입력한비번, result.password)) {
       return cb(null, result);
     } else {
       return cb(null, false, { message: "비번불일치" });
@@ -277,3 +288,30 @@ passport.deserializeUser((user, done) => {
     return done(null, user);
   });
 });
+//이럴 경우에는 세션 정보 갖고 있는 쿠키를 가지고 있는 유저가
+//요청을 날릴 때마다 실행된다. 메인 페이지 접속하거나 이러면 비효율적이다.
+//deserializer를 특정 api에서만 실행 가능
+
+//회원가입 기능
+app.get("/register", (요청, 응답) => {
+  응답.render("register.ejs");
+});
+
+app.post("/register", async (요청, 응답) => {
+  //비밀번호는 암호화해서 저장하는게 좋다.(해싱)
+  //bcrypt 대신에 argon2, scrypt 등을 써도 된다.
+  //단순히 유저 비밀번호로 해싱하는게 아니라, 비밀번호 + abc123 이렇게 뒤에 '솔트'를 붙여서 해싱하는게 좋다.
+  //salt를 쓰면 lookup table attack/rainbow table attakc등의 해킹을 막을 수 있다.
+  //salt는 다른 곳에 보관할 수 있는데 그럼 pepper라고 부른다.
+  let hash = await bcrypt.hash(요청.body.password, 10); // 문자 하나 해싱에 대충 50ms 정도 걸린다.
+  // console.log(hash);
+  await db.collection("user").insertOne({
+    username: 요청.body.username,
+    password: hash,
+  });
+  응답.redirect("/");
+});
+
+// 세션을 db가 아니라 메모리에 임시저장하면 유저가 로그인인 했을 때 만든 세션 document 등이
+// 서버가 재시작되면 세션 document들이 증발한다.
+// 세션을 DB에 저장하려면 connect-mongo 설치
