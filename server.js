@@ -11,6 +11,8 @@ const { MongoClient } = require("mongodb");
 const { ObjectId } = require("mongodb");
 const methodOverride = require("method-override");
 const bcrypt = require("bcrypt");
+//환경변수 설정
+require("dotenv").config();
 
 //css사용하고 싶으면 public안에다가 넣던가 폴더 만들고 적어주기
 app.use(express.static(__dirname + "/public"));
@@ -22,6 +24,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(methodOverride("_method"));
 
 //passport 라이브러리 세팅
+const url = process.env.DB_URL;
 const session = require("express-session");
 const passport = require("passport");
 const LocalStrategy = require("passport-local");
@@ -47,12 +50,13 @@ app.use(
 app.use(passport.session());
 
 let db;
+
 new MongoClient(url)
   .connect()
   .then((client) => {
     console.log("DB연결성공");
     db = client.db("forum");
-    app.listen(8080, () => {
+    app.listen(process.env.PORT, () => {
       console.log("http://localhost:8080 에서 서버 실행중");
     });
   })
@@ -64,8 +68,23 @@ new MongoClient(url)
 //   응답.send("반갑다");
 // });
 
+//미들웨어 함수에서는
+//요청,응답을 자유롭게 사용할 수 있다.
+function checkLogin(요청, 응답, next) {
+  if (!요청.user) {
+    응답.send("로그인하세요");
+  }
+  //next()는 미들웨어 실행 다 끝나면 다음으로 이동해달라
+}
+
 //html 파일 보내고 싶을때 sendFile
-app.get("/", (요청, 응답) => {
+//이런식으로 함수를 가운데 넣으면 요청과 응답 사이에 실행된다. => 미들웨어
+//1.checkLogin대신에 ()=>{}이렇게도 코드 짤 수 있다.
+//2.여러개 넣을 수도 있다. [ , , ] 이런식으로
+//3.app.use(checkLogin)하면 이 코드 밑에 있는 모든 api에 미들웨어가 적용된다.
+//4.제한사항으로 app.use('/URL',checkLogin) url로 get,post..요청할때만 미들웨어를 실행해준다.
+//하위 URL도 실행해준다! app.use는 아래쪽부터 실행되기 때문에 보통 위쪽쯤에 넣는다.
+app.get("/", checkLogin, (요청, 응답) => {
   응답.sendFile(__dirname + "/index.html");
 });
 
