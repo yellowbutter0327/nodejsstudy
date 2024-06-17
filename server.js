@@ -49,6 +49,29 @@ app.use(
 
 app.use(passport.session());
 
+const { S3Client } = require("@aws-sdk/client-s3");
+const multer = require("multer");
+const multerS3 = require("multer-s3");
+const s3 = new S3Client({
+  region: "ap-northeast-2", // 서울로 s3 셋팅해놨으면 ap-northeast-2 기입
+  credentials: {
+    accessKeyId: process.env.S3_KEY,
+    secretAccessKey: process.env.S3_SECRET,
+  },
+});
+
+const upload = multer({
+  storage: multerS3({
+    s3: s3,
+    bucket: "님들버킷이름",
+    key: function (요청, file, cb) {
+      cb(null, Date.now().toString()); //업로드시 파일명 변경가능
+    },
+  }),
+});
+
+//upload.single('input 이름')함수 실행하면 S3에 업로드 된다.
+
 let db;
 
 new MongoClient(url)
@@ -119,23 +142,25 @@ app.get("/write", (요청, 응답) => {
   응답.render("write.ejs");
 });
 
-app.post("/add", async (요청, 응답) => {
-  console.log(요청.body);
+//upload.single : name="img1"가진 이미지 들어오면 s3에 자동 업로드 해준다.
+app.post("/add", upload.single("img1"), async (요청, 응답) => {
+  // 요청.file 하면 업로드 완료시 이미지 url 생성해준다.
+  console.log(요청.file);
   //여기서 요청.body는 {title: '' , content: ''} 이런 형식일듯
-  try {
-    if (요청.body.title === "") {
-      응답.send("잘못된 요청입니다.");
-    } else {
-      await db
-        .collection("post")
-        .insertOne({ title: 요청.body.title, content: 요청.body.content });
-      // 응답.send()
-      응답.redirect("/list");
-    }
-  } catch (e) {
-    console.log(e);
-    응답.status(500).send("서버에러");
-  }
+  // try {
+  //   if (요청.body.title === "") {
+  //     응답.send("잘못된 요청입니다.");
+  //   } else {
+  //     await db
+  //       .collection("post")
+  //       .insertOne({ title: 요청.body.title, content: 요청.body.content });
+  //     // 응답.send()
+  //     응답.redirect("/list");
+  //   }
+  // } catch (e) {
+  //   console.log(e);
+  //   응답.status(500).send("서버에러");
+  // }
 });
 
 //url parameter
