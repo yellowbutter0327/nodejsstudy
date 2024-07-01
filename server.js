@@ -24,11 +24,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use(methodOverride("_method"));
 
 //passport 라이브러리 세팅
+// process.env.DB_URL
 const url = process.env.DB_URL;
 const session = require("express-session");
 const passport = require("passport");
 const LocalStrategy = require("passport-local");
 const MongoStore = require("connect-mongo");
+
+// 서버는 이미지 받으면 S3에 업로드 한다.
+// multer/formidable 라이브러리 쓰면 편하다.
 
 app.use(passport.initialize());
 app.use(
@@ -57,15 +61,19 @@ const s3 = new S3Client({
   credentials: {
     accessKeyId: process.env.S3_KEY,
     secretAccessKey: process.env.S3_SECRET,
+    //i am 이라고 검색했을 때 나오는
   },
 });
 
 const upload = multer({
   storage: multerS3({
     s3: s3,
-    bucket: "님들버킷이름",
+    bucket: "yellowbutter",
     key: function (요청, file, cb) {
-      cb(null, Date.now().toString()); //업로드시 파일명 변경가능
+      cb(null, Date.now().toString());
+      //s3에 업로드할 이미지 파일명 작성하는 곳
+      //업로드시 파일명 변경가능
+      //파일명이 겹치지 않기 위해서 랜덤한 시간이나 문자를 기입하는 경우가 있음.
     },
   }),
 });
@@ -144,23 +152,29 @@ app.get("/write", (요청, 응답) => {
 
 //upload.single : name="img1"가진 이미지 들어오면 s3에 자동 업로드 해준다.
 app.post("/add", upload.single("img1"), async (요청, 응답) => {
-  // 요청.file 하면 업로드 완료시 이미지 url 생성해준다.
+  // 업로드 완료시 이미지 url 생성해준다. 그게 바로 요청.file이다.
+  // 여러장 업로드 하고 싶으면 upload.single 대신 upload.array
+  // input 에 name 속성 적고  ("img1",2) 이렇게 최대 이미지 개수 적어준다.
   console.log(요청.file);
+  //업로드 후 URL은 요청.file 안에 들어있다.
   //여기서 요청.body는 {title: '' , content: ''} 이런 형식일듯
-  // try {
-  //   if (요청.body.title === "") {
-  //     응답.send("잘못된 요청입니다.");
-  //   } else {
-  //     await db
-  //       .collection("post")
-  //       .insertOne({ title: 요청.body.title, content: 요청.body.content });
-  //     // 응답.send()
-  //     응답.redirect("/list");
-  //   }
-  // } catch (e) {
-  //   console.log(e);
-  //   응답.status(500).send("서버에러");
-  // }
+  //요청.file.location 해서 나온 주소를 igg src 안에 넣으면 되겠지
+  try {
+    if (요청.body.title === "") {
+      응답.send("잘못된 요청입니다.");
+    } else {
+      await db.collection("post").insertOne({
+        title: 요청.body.title,
+        content: 요청.body.content,
+        img: 요청.file.location,
+      });
+      // 응답.send()
+      응답.redirect("/list");
+    }
+  } catch (e) {
+    console.log(e);
+    응답.status(500).send("서버에러");
+  }
 });
 
 //url parameter
