@@ -56,11 +56,12 @@ app.use(passport.session());
 const { S3Client } = require("@aws-sdk/client-s3");
 const multer = require("multer");
 const multerS3 = require("multer-s3");
+const connectDB = require("./database.js");
 const s3 = new S3Client({
   region: "ap-northeast-2", // 서울로 s3 셋팅해놨으면 ap-northeast-2 기입
   credentials: {
     accessKeyId: process.env.S3_KEY,
-    secretAccessKey: process.env.S3_SECRET,
+    secretAccessKey: process.env.S3_SECRECT,
     //i am 이라고 검색했을 때 나오는
   },
 });
@@ -79,15 +80,15 @@ const upload = multer({
 });
 
 //upload.single('input 이름')함수 실행하면 S3에 업로드 된다.
+let connectDB = require("./database.js");
 
 let db;
 
-new MongoClient(url)
-  .connect()
+connectDB
   .then((client) => {
     console.log("DB연결성공");
     db = client.db("forum");
-    app.listen(process.env.PORT, () => {
+    app.listen(8080, () => {
       console.log("http://localhost:8080 에서 서버 실행중");
     });
   })
@@ -373,3 +374,5 @@ app.post("/register", async (요청, 응답) => {
 // 세션을 db가 아니라 메모리에 임시저장하면 유저가 로그인인 했을 때 만든 세션 document 등이
 // 서버가 재시작되면 세션 document들이 증발한다.
 // 세션을 DB에 저장하려면 connect-mongo 설치
+
+app.use("/", require("./routes/shop.js"));
