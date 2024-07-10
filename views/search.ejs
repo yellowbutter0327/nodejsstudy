@@ -13,6 +13,7 @@
     <!-- <%= JSON.stringify(글목록) %> -->
     <input class="search" />
     <button class="search-send">검색</button>
+    <h4>검색결과</h4>
     <div class="white-bg">
       <% for(let i=0; i < 글목록.length ; i++) { %>
       <div class="list-box">
@@ -26,32 +27,6 @@
       </div>
       <% } %>
     </div>
-    <a href="/list/next/<%= 글목록[글목록.length-1]._id%>">다음</a>
-    <script>
-      console.log("<%= 글목록[0]._id %>");
-      //방법1
-      // document
-      //   .querySelectorAll(".delete")[0]
-      //   .addEventListener("click", function () {
-      //     fetch("/delete?docid=<%= 글목록[0]._id %>", { method: "DELETE" });
-      //   });
-
-      //방법2(좀 더 정확한 방법)
-      document
-        .querySelectorAll(".delete")[0]
-        .addEventListener("click", function (e) {
-          fetch("/delete?docid=" + e.target.dataset.id, {
-            method: "DELETE",
-          });
-        });
-
-      //버튼 찾기
-      document
-        .querySelector(".search-send")
-        .addEventListener("click", function () {
-          let 입력한거 = document.querySelector(".search").value;
-          location.href = "/search?val=" + 입력한거;
-        });
-    </script>
+    s
   </body>
 </html>

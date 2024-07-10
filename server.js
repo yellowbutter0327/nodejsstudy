@@ -62,6 +62,7 @@ const s3 = new S3Client({
   credentials: {
     accessKeyId: process.env.S3_KEY,
     secretAccessKey: process.env.S3_SECRECT,
+    // process.env.DB_URL
     //i am 이라고 검색했을 때 나오는
   },
 });
@@ -80,7 +81,7 @@ const upload = multer({
 });
 
 //upload.single('input 이름')함수 실행하면 S3에 업로드 된다.
-let connectDB = require("./database.js");
+// let connectDB = require("./database.js");
 
 let db;
 
@@ -376,3 +377,49 @@ app.post("/register", async (요청, 응답) => {
 // 세션을 DB에 저장하려면 connect-mongo 설치
 
 app.use("/", require("./routes/shop.js"));
+
+//검색기능만들기1
+// app.get("/search", async (요청, 응답) => {
+//   console.log(요청.query.val);
+//   let result = await db
+//     .collection("post")
+//     .find({ title: { $regex: 요청.query.val } })
+//     .toArray();
+//   응답.render("search.ejs", { 글목록: result });
+// });
+
+//검색기능만들기2
+//정규식 써서 일부 글씨만 포함되어도 검색될 수 있게 한다.
+//문제는 느려짐
+//그래서 index를 사용한 binary search를 한다.
+//mongodb에서 index 만들어서 검색
+//필드 적어주고 문자면 "text", 숫자면 1 또는 -1을 적어준다.
+//index의 단점 : 만들면 용량 차지한다. 그래서 검색에 필요한 것만 만들어두던가..
+//document 추가/수정/삭제시 index에도 반영해야한다.
+//정확한 단어 검색만 되네?
+//정규식써서 검색시 index 거의 못 쓴다.
+//index를 입력하는건 문자말고 숫자일때..가 유용함
+//그래서 search index(full text index)를 만들어 써야함.
+//search index : 문장에서 조사, 불용어 등 제거 - 모든 단어 뽑아서 정렬 - 어떤 document 등장했는지 기재
+//search index로 검색 순위 조절 등 할 수 있다.
+//search index 만들면 .find 대신 .aggregate 사용
+//find는 검색조건 1개뿐이었는데 aggregate는 여러개 가능
+app.get("/search", async (요청, 응답) => {
+  console.log(요청.query.val);
+  let 검색조건 = [
+    {
+      $search: {
+        index: "title_index", //mongodb에서 search index로 만둘어둔 이름
+        text: { query: 요청.query.val, path: "title" }, //path는 검색할 필드
+      },
+    },
+    { $sort: { _id: 1 } }, //필드값으로 결과 정렬은 $sort : {필드 : 1} 이렇게
+    { $limit: 10 }, // 결과수 제한은 $limit : 수량
+    { $skip: 10 }, // 위에서 10개 건너뛰기
+    { $project: { title: 1 } }, // 필드 숨기기 - 어떤 필드 숨기려면 0 , 보이려면 1
+  ];
+  let result = await db.collection("post").aggregate(검색조건).toArray();
+
+  //toArray 말고 .explain('executionStats') 하면 쿼리 얼마나 걸리는지 속도 알 수 있음
+  응답.render("search.ejs", { 글목록: result });
+});
