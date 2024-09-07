@@ -34,7 +34,6 @@ const MongoStore = require("connect-mongo");
 // 서버는 이미지 받으면 S3에 업로드 한다.
 // multer/formidable 라이브러리 쓰면 편하다.
 
-app.use(passport.initialize());
 app.use(
   session({
     secret: "1234",
@@ -51,6 +50,7 @@ app.use(
   })
 );
 
+app.use(passport.initialize());
 app.use(passport.session());
 
 const { S3Client } = require("@aws-sdk/client-s3");
@@ -104,9 +104,11 @@ connectDB
 //미들웨어 함수에서는
 //요청,응답을 자유롭게 사용할 수 있다.
 function checkLogin(요청, 응답, next) {
+  console.log("checklogin", 요청.user);
   if (!요청.user) {
     응답.send("로그인하세요");
   }
+  next();
   //next()는 미들웨어 실행 다 끝나면 다음으로 이동해달라
 }
 
@@ -133,10 +135,12 @@ app.get("/news", (요청, 응답) => {
 //db 게시물 가져오기
 app.get("/list", async (요청, 응답) => {
   let result = await db.collection("post").find().toArray();
-  console.log(result[0].title);
+  // console.log(result[0].title);
   //   응답.send(result[0].title);
   //응답은 1개만 가능하다.
-  응답.render("list.ejs", { 글목록: result });
+  const username = 요청.user ? 요청.user.username : "Anonymous";
+  응답.render("list.ejs", { 글목록: result, username: username });
+  // console.log("listresult", result);
 });
 
 app.get("/time", async (요청, 응답) => {
@@ -168,7 +172,9 @@ app.post("/add", upload.single("img1"), async (요청, 응답) => {
       await db.collection("post").insertOne({
         title: 요청.body.title,
         content: 요청.body.content,
-        img: 요청.file.location,
+        img: 요청.file ? 요청.file.location : "",
+        user: 요청.user._id,
+        username: 요청.user.username,
       });
       // 응답.send()
       응답.redirect("/list");
@@ -186,10 +192,15 @@ app.get("/detail/:id", async (요청, 응답) => {
     let result = await db
       .collection("post")
       .findOne({ _id: new ObjectId(요청.params.id) });
+    let result2 = await db
+      .collection("comment")
+      .find({ parentId: new ObjectId(요청.params.id) })
+      .toArray();
+    console.log(result);
     if (result == null) {
       응답.status(400).send("이상한 url 입력함!");
     } else {
-      응답.render("detail.ejs", { result: result });
+      응답.render("detail.ejs", { result: result, result2: result2 });
     }
   } catch (e) {
     console.log(e);
@@ -235,10 +246,22 @@ app.put("/edit", async (요청, 응답) => {
 //   console.log(요청.query);
 // });
 
-app.delete("/delete", async (요청, 응답) => {
-  console.log(요청.query);
-  let result = await db.collection("post").deleteOne({ _id: 요청.query.docid });
-  응답.send("삭제완료");
+app.delete("/delete", async (req, res) => {
+  const { docid } = req.query;
+  console.log("삭제할거", docid, "유저", req.user._id);
+  try {
+    // 현재 로그인한 유저의 글만 삭제 가능
+    await db.collection("post").deleteOne({
+      _id: new ObjectId(docid),
+      user: new ObjectId(req.user._id),
+    });
+
+    res.send("삭제 완료");
+  } catch (error) {
+    console.error("삭제 실패:", error);
+    res.status(500).send("서버 에러");
+  }
+
   //ajax 요청시 응답.redirect 응답.render 사용안하는게 낫다.
   //새로고침 안하려고 ajax 사용하는건데 새로고침하면 의미가 없기 때문임
 });
@@ -376,9 +399,9 @@ app.post("/register", async (요청, 응답) => {
 // 서버가 재시작되면 세션 document들이 증발한다.
 // 세션을 DB에 저장하려면 connect-mongo 설치
 
-app.use("/", require("./routes/shop.js"));
+// app.use("/", require("./routes/shop.js"));
 
-//검색기능만들기1
+//검색기능만들기1 (문제는 제목이 정확히 일치해야 찾아줌 => regex 쓰면 포함된거 찾아줌) => 문제 속도 느림
 // app.get("/search", async (요청, 응답) => {
 //   console.log(요청.query.val);
 //   let result = await db
@@ -392,34 +415,89 @@ app.use("/", require("./routes/shop.js"));
 //정규식 써서 일부 글씨만 포함되어도 검색될 수 있게 한다.
 //문제는 느려짐
 //그래서 index를 사용한 binary search를 한다.
+//binary search 하려면 정렬을 우선 해야함.
 //mongodb에서 index 만들어서 검색
 //필드 적어주고 문자면 "text", 숫자면 1 또는 -1을 적어준다.
+
+//explain 하면 find 성능 체크할 수 있음
+// app.get("/search", async (요청, 응답) => {
+//   console.log(요청.query.val);
+//   let result = await db
+//     .collection("post")
+//     .find({ $text: { $search: 요청.query.val } })
+//    (검색기능)) .toArray()
+//    (성능검사) .explain('executionStats);
+//   응답.render("search.ejs", { 글목록: result });
+// });
+
 //index의 단점 : 만들면 용량 차지한다. 그래서 검색에 필요한 것만 만들어두던가..
 //document 추가/수정/삭제시 index에도 반영해야한다.
-//정확한 단어 검색만 되네?
+//정확한 단어 검색만 되네? 띄어쓰기 허용안되고..
 //정규식써서 검색시 index 거의 못 쓴다.
 //index를 입력하는건 문자말고 숫자일때..가 유용함
 //그래서 search index(full text index)를 만들어 써야함.
+
 //search index : 문장에서 조사, 불용어 등 제거 - 모든 단어 뽑아서 정렬 - 어떤 document 등장했는지 기재
 //search index로 검색 순위 조절 등 할 수 있다.
 //search index 만들면 .find 대신 .aggregate 사용
-//find는 검색조건 1개뿐이었는데 aggregate는 여러개 가능
+//find는 검색조건 1개뿐이었는데 aggregate는 여러개 가능 .aggregate([{조건1},{조건2}])
 app.get("/search", async (요청, 응답) => {
-  console.log(요청.query.val);
-  let 검색조건 = [
+  let searchItem = 요청.query.val;
+  console.log("검색어", searchItem);
+  let searchCondition = [
     {
       $search: {
         index: "title_index", //mongodb에서 search index로 만둘어둔 이름
-        text: { query: 요청.query.val, path: "title" }, //path는 검색할 필드
+        text: { query: searchItem, path: "title" }, //path는 검색할 필드
       },
     },
-    { $sort: { _id: 1 } }, //필드값으로 결과 정렬은 $sort : {필드 : 1} 이렇게
-    { $limit: 10 }, // 결과수 제한은 $limit : 수량
-    { $skip: 10 }, // 위에서 10개 건너뛰기
-    { $project: { title: 1 } }, // 필드 숨기기 - 어떤 필드 숨기려면 0 , 보이려면 1
+    // { $sort: { _id: 1 } }, //필드값으로 결과 정렬은 $sort : {필드 : 1} 이렇게 -1로 역순정렬도 가능
+    // { $skip: 10 }, // 위에서 10개 건너뛰기
+    // { $limit: 10 }, // 결과수 제한은 $limit : 수량
+    // { $project: { title: 1, content: 1 } }, // 필드 숨기기 - 어떤 필드 숨기려면 0 , 보이려면 1, 타이틀 필드 보여지게
   ];
-  let result = await db.collection("post").aggregate(검색조건).toArray();
-
+  let result = await db.collection("post").aggregate(searchCondition).toArray();
+  console.log("검색결과", result);
   //toArray 말고 .explain('executionStats') 하면 쿼리 얼마나 걸리는지 속도 알 수 있음
   응답.render("search.ejs", { 글목록: result });
 });
+
+//댓글 기능
+// app.post("/comment", async (요청, 응답) => {
+//   console.log("댓글 요청 받음:", 요청.body); // 요청 데이터 확인
+//   await db.collection("comment").insertOne({
+//     content: 요청.body.content,
+//     writerId: new ObjectId(요청.user._id),
+//     writer: 요청.user.username,
+//     parentId: new ObjectId(요청.body.parentId),
+//   });
+//   // post 한 다음에는 항상 다른 페이지로 요청되기 때문
+//   // '뒤로 가기'가 아니라 사용자가 요청을 보낸 페이지로 리디렉션하는 동작
+//   응답.redirect("back");
+// });
+
+app.post("/comment", checkLogin, async (req, res) => {
+  try {
+    let result = await db.collection("comment").insertOne({
+      content: req.body.content,
+      writerId: new ObjectId(req.user._id),
+      writer: req.user.username,
+      parentId: new ObjectId(req.body.parentId),
+    });
+    res.redirect("back");
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("댓글 작성 중 오류가 발생했습니다.");
+  }
+});
+
+// app.get("/detail/:id", async (요청, 응답) => {
+//   let result = await db
+//     .collection("post")
+//     .findOne({ _id: new ObjectId(요청.params.id) });
+//   let result2 = await db
+//     .collection("comment")
+//     .find({ parentId: new ObjectId(요청.params.id) })
+//     .toArray();
+//   응답.render("detail.ejs", { result: result, result2: result2 });
+// });
